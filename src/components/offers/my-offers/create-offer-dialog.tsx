@@ -25,25 +25,77 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 
-const createOfferSchema = z.object({
-  name: z
-    .string()
-    .min(1, "Name is required")
-    .min(3, "Name must be at least 3 characters"),
-  status: z.enum(["pending", "active", "canceled", "completed"]),
-  description: z.string().optional(),
-});
+const createOfferSchema = z
+  .object({
+    name: z
+      .string()
+      .min(1, "Name is required")
+      .min(3, "Name must be at least 3 characters"),
+    status: z.enum(["pending", "active", "canceled", "completed"]),
+    description: z.string().optional(),
+    requiredRooms: z
+      .string()
+      .optional()
+      .refine(
+        (val) => {
+          if (!val) return true; // Optional field
+          const num = Number(val);
+          return !isNaN(num) && Number.isInteger(num) && num >= 1;
+        },
+        { message: "Required rooms must be a positive integer" }
+      ),
+    roomTypes: z.array(z.string()).optional(),
+    bookPeriodStart: z.string().optional(),
+    bookPeriodEnd: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      // If start date is provided, end date should also be provided
+      if (data.bookPeriodStart && !data.bookPeriodEnd) return false;
+      if (!data.bookPeriodStart && data.bookPeriodEnd) return false;
+      // If both dates are provided, end should be after start
+      if (data.bookPeriodStart && data.bookPeriodEnd) {
+        return new Date(data.bookPeriodEnd) >= new Date(data.bookPeriodStart);
+      }
+      return true;
+    },
+    {
+      message: "End date must be after start date",
+      path: ["bookPeriodEnd"],
+    }
+  );
 
 type CreateOfferFormData = z.infer<typeof createOfferSchema>;
 
 interface CreateOfferDialogProps {
   children: React.ReactNode;
-  onSubmit?: (data: CreateOfferFormData) => void | Promise<void>;
+  onSubmit?: (data: {
+    name: string;
+    status: "pending" | "active" | "canceled" | "completed";
+    description?: string;
+    requiredRooms?: number;
+    roomTypes?: string[];
+    bookPeriodStart?: Date;
+    bookPeriodEnd?: Date;
+  }) => void | Promise<void>;
+  organizationType?: "agency" | "hotel";
 }
+
+const ROOM_TYPES = [
+  "Standard",
+  "Deluxe",
+  "Suite",
+  "Business",
+  "Executive",
+  "Presidential",
+  "Family",
+  "Studio",
+];
 
 export function CreateOfferDialog({
   children,
   onSubmit,
+  organizationType = "agency",
 }: CreateOfferDialogProps) {
   const [open, setOpen] = useState(false);
   const {
@@ -59,14 +111,50 @@ export function CreateOfferDialog({
       name: "",
       status: "pending",
       description: "",
+      requiredRooms: "",
+      roomTypes: [],
+      bookPeriodStart: "",
+      bookPeriodEnd: "",
     },
   });
 
   const selectedStatus = watch("status");
+  const selectedRoomTypes = watch("roomTypes") || [];
+  const bookPeriodStart = watch("bookPeriodStart");
+  const bookPeriodEnd = watch("bookPeriodEnd");
+
+  const handleRoomTypeChange = (roomType: string, checked: boolean) => {
+    const currentTypes = selectedRoomTypes;
+    if (checked) {
+      setValue("roomTypes", [...currentTypes, roomType]);
+    } else {
+      setValue(
+        "roomTypes",
+        currentTypes.filter((type) => type !== roomType)
+      );
+    }
+  };
 
   const onSubmitForm = async (data: CreateOfferFormData) => {
     try {
-      await onSubmit?.(data);
+      await onSubmit?.({
+        name: data.name,
+        status: data.status,
+        description: data.description,
+        requiredRooms: data.requiredRooms
+          ? Number(data.requiredRooms)
+          : undefined,
+        roomTypes:
+          data.roomTypes && data.roomTypes.length > 0
+            ? data.roomTypes
+            : undefined,
+        bookPeriodStart: data.bookPeriodStart
+          ? new Date(data.bookPeriodStart)
+          : undefined,
+        bookPeriodEnd: data.bookPeriodEnd
+          ? new Date(data.bookPeriodEnd)
+          : undefined,
+      });
       reset();
       setOpen(false);
     } catch (error) {
@@ -74,10 +162,12 @@ export function CreateOfferDialog({
     }
   };
 
+  const isAgency = organizationType === "agency";
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Offer</DialogTitle>
           <DialogDescription>
@@ -139,6 +229,94 @@ export function CreateOfferDialog({
               rows={4}
             />
           </div>
+
+          {isAgency && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="requiredRooms">Required Rooms</Label>
+                <Input
+                  id="requiredRooms"
+                  type="number"
+                  min="1"
+                  placeholder="Enter number of rooms required"
+                  {...register("requiredRooms")}
+                  aria-invalid={errors.requiredRooms ? "true" : "false"}
+                />
+                {errors.requiredRooms && (
+                  <p className="text-sm text-destructive">
+                    {errors.requiredRooms.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Room Types</Label>
+                <div className="grid grid-cols-2 gap-2 p-3 border rounded-lg">
+                  {ROOM_TYPES.map((type) => (
+                    <label
+                      key={type}
+                      className="flex items-center space-x-2 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedRoomTypes.includes(type)}
+                        onChange={(e) =>
+                          handleRoomTypeChange(type, e.target.checked)
+                        }
+                        className="rounded border-gray-300"
+                      />
+                      <span className="text-sm">{type}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Book Period</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label
+                      htmlFor="bookPeriodStart"
+                      className="text-xs text-muted-foreground"
+                    >
+                      Start Date
+                    </Label>
+                    <Input
+                      id="bookPeriodStart"
+                      type="date"
+                      {...register("bookPeriodStart")}
+                      aria-invalid={errors.bookPeriodStart ? "true" : "false"}
+                    />
+                    {errors.bookPeriodStart && (
+                      <p className="text-sm text-destructive">
+                        {errors.bookPeriodStart.message}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label
+                      htmlFor="bookPeriodEnd"
+                      className="text-xs text-muted-foreground"
+                    >
+                      End Date
+                    </Label>
+                    <Input
+                      id="bookPeriodEnd"
+                      type="date"
+                      min={bookPeriodStart || undefined}
+                      {...register("bookPeriodEnd")}
+                      aria-invalid={errors.bookPeriodEnd ? "true" : "false"}
+                    />
+                    {errors.bookPeriodEnd && (
+                      <p className="text-sm text-destructive">
+                        {errors.bookPeriodEnd.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
 
           <DialogFooter>
             <Button
