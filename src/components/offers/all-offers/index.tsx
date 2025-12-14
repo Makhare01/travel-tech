@@ -28,6 +28,7 @@ import { Clock01Icon, SearchIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMemo, useState } from "react";
 import { ApplyOfferDialog } from "./apply-offer-dialog";
+import { OfferDetailsDialog } from "./offer-details-dialog";
 
 type OrganizationType = "hotel" | "agency";
 
@@ -45,6 +46,25 @@ interface Offer {
   deadline: Date;
   tags: string[];
   organization: Organization;
+  // Agency-specific fields
+  requiredRooms?: number;
+  roomTypes?: Array<{ type: string; quantity: number }>;
+  // Hotel-specific fields
+  rooms?: Array<{
+    roomId: string;
+    groupPrice: number;
+    individualPrice?: number;
+  }>;
+  allowSplitting?: boolean;
+  remainingRooms?: number;
+  // Common fields
+  bookPeriodStart?: Date;
+  bookPeriodEnd?: Date;
+  contractFile?: File | string;
+  contractFileName?: string;
+  invoiceFile?: File | string;
+  invoiceFileName?: string;
+  bookType?: "hard" | "soft";
 }
 
 // Mock data - replace with actual data fetching
@@ -174,6 +194,8 @@ export const AllOffers = () => {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [detailsOffer, setDetailsOffer] = useState<Offer | null>(null);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
 
   const filteredOffers = useMemo(() => {
     return mockOffers.filter((offer) => {
@@ -195,9 +217,22 @@ export const AllOffers = () => {
     });
   }, [searchQuery, typeFilter]);
 
+  const handleCardClick = (offer: Offer) => {
+    setDetailsOffer(offer);
+    setIsDetailsDialogOpen(true);
+  };
+
   const handleApply = (offer: Offer) => {
     setSelectedOffer(offer);
     setIsDialogOpen(true);
+  };
+
+  const handleApplyFromDetails = () => {
+    if (detailsOffer) {
+      setIsDetailsDialogOpen(false);
+      setSelectedOffer(detailsOffer);
+      setIsDialogOpen(true);
+    }
   };
 
   const handleSubmitApplication = async (data: {
@@ -259,6 +294,7 @@ export const AllOffers = () => {
                 "hover:-translate-y-1",
                 getBorderColor(offer.id)
               )}
+              onClick={() => handleCardClick(offer)}
             >
               <CardHeader>
                 <div className="flex items-start justify-between gap-4">
@@ -307,7 +343,13 @@ export const AllOffers = () => {
                 </div>
               </CardContent>
               <CardFooter>
-                <Button className="w-full" onClick={() => handleApply(offer)}>
+                <Button
+                  className="w-full"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleApply(offer);
+                  }}
+                >
                   Apply
                 </Button>
               </CardFooter>
@@ -315,6 +357,14 @@ export const AllOffers = () => {
           ))}
         </div>
       )}
+
+      {/* Offer Details Dialog */}
+      <OfferDetailsDialog
+        offer={detailsOffer}
+        open={isDetailsDialogOpen}
+        onOpenChange={setIsDetailsDialogOpen}
+        onApply={handleApplyFromDetails}
+      />
 
       {/* Apply Offer Dialog */}
       {selectedOffer && (

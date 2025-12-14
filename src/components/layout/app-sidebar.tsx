@@ -10,6 +10,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import Image from "next/image";
 import { Suspense } from "react";
 import { SidebarNav } from "./sidebar-nav";
 
@@ -56,11 +57,17 @@ export async function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 py-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:w-full">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-semibold text-xs group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:mx-auto">
-            T
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg overflow-hidden group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:mx-auto">
+            <Image
+              src="/logo.png"
+              alt="Logo"
+              width={32}
+              height={32}
+              className="object-contain"
+            />
           </div>
           <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden">
-            <span className="text-sm font-semibold truncate">Travel Tech</span>
+            <span className="text-sm font-semibold truncate">Access Pro</span>
             <span className="text-xs text-muted-foreground truncate">
               Platform
             </span>

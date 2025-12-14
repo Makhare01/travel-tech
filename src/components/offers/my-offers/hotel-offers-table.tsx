@@ -21,9 +21,10 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
-import { CreateOfferDialog } from "./create-offer-dialog";
+import { CreateHotelOfferDialog } from "./create-hotel-offer-dialog";
 import { DeleteOfferDialog } from "./delete-offer-dialog";
-import { EditOfferDialog } from "./edit-offer-dialog";
+import { EditHotelOfferDialog } from "./edit-hotel-offer-dialog";
+import { HotelOfferDetailsDialog } from "./hotel-offer-details-dialog";
 
 type OfferStatus = "pending" | "active" | "canceled" | "completed";
 
@@ -33,6 +34,20 @@ interface Offer {
   status: OfferStatus;
   createdDate: Date;
   description?: string;
+  rooms: Array<{
+    roomId: string;
+    groupPrice: number;
+    individualPrice?: number;
+  }>;
+  bookPeriodStart?: Date;
+  bookPeriodEnd?: Date;
+  allowSplitting: boolean;
+  remainingRooms?: number; // Calculated if splitting is allowed
+  contractFile?: File | string;
+  contractFileName?: string;
+  invoiceFile?: File | string;
+  invoiceFileName?: string;
+  bookType: "hard" | "soft";
 }
 
 // Mock data - replace with actual data fetching
@@ -43,6 +58,16 @@ const mockOffers: Offer[] = [
     status: "active",
     createdDate: new Date("2024-01-15"),
     description: "Special summer rates for hotel rooms.",
+    rooms: [
+      { roomId: "1", groupPrice: 150, individualPrice: 180 },
+      { roomId: "2", groupPrice: 200, individualPrice: 250 },
+      { roomId: "3", groupPrice: 180, individualPrice: 220 },
+    ],
+    bookPeriodStart: new Date("2024-06-01"),
+    bookPeriodEnd: new Date("2024-08-31"),
+    allowSplitting: true,
+    remainingRooms: 2,
+    bookType: "soft",
   },
   {
     id: "OFF-002",
@@ -50,6 +75,14 @@ const mockOffers: Offer[] = [
     status: "pending",
     createdDate: new Date("2024-01-20"),
     description: "Weekend getaway package with breakfast included.",
+    rooms: [
+      { roomId: "4", groupPrice: 120 },
+      { roomId: "5", groupPrice: 120 },
+    ],
+    bookPeriodStart: new Date("2024-05-01"),
+    bookPeriodEnd: new Date("2024-05-31"),
+    allowSplitting: false,
+    bookType: "hard",
   },
 ];
 
@@ -102,9 +135,16 @@ function formatDate(date: Date): string {
   }).format(date);
 }
 
+function formatDateRange(start?: Date, end?: Date): string {
+  if (!start || !end) return "Not specified";
+  return `${formatDate(start)} - ${formatDate(end)}`;
+}
+
 export const HotelOffersTable = () => {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [offers, setOffers] = useState<Offer[]>(mockOffers);
+  const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
 
   const filteredOffers =
     statusFilter === "all"
@@ -115,6 +155,19 @@ export const HotelOffersTable = () => {
     name: string;
     status: OfferStatus;
     description?: string;
+    rooms: Array<{
+      roomId: string;
+      groupPrice: number;
+      individualPrice?: number;
+    }>;
+    bookPeriodStart?: Date;
+    bookPeriodEnd?: Date;
+    allowSplitting: boolean;
+    contractFile?: File | string;
+    contractFileName?: string;
+    invoiceFile?: File | string;
+    invoiceFileName?: string;
+    bookType: "hard" | "soft";
   }) => {
     // TODO: Replace with actual API call
     const newOffer: Offer = {
@@ -123,6 +176,16 @@ export const HotelOffersTable = () => {
       status: data.status,
       createdDate: new Date(),
       description: data.description,
+      rooms: data.rooms,
+      bookPeriodStart: data.bookPeriodStart,
+      bookPeriodEnd: data.bookPeriodEnd,
+      allowSplitting: data.allowSplitting,
+      remainingRooms: data.allowSplitting ? data.rooms.length : undefined,
+      contractFile: data.contractFile,
+      contractFileName: data.contractFileName,
+      invoiceFile: data.invoiceFile,
+      invoiceFileName: data.invoiceFileName,
+      bookType: data.bookType,
     };
     setOffers([...offers, newOffer]);
   };
@@ -133,6 +196,18 @@ export const HotelOffersTable = () => {
       name: string;
       status: OfferStatus;
       description?: string;
+      rooms: Array<{
+        roomId: string;
+        groupPrice: number;
+        individualPrice?: number;
+      }>;
+      bookPeriodStart?: Date;
+      bookPeriodEnd?: Date;
+      allowSplitting: boolean;
+      contractFile?: File | string;
+      contractFileName?: string;
+      invoiceFile?: File | string;
+      invoiceFileName?: string;
     }
   ) => {
     // TODO: Replace with actual API call
@@ -144,6 +219,18 @@ export const HotelOffersTable = () => {
               name: data.name,
               status: data.status,
               description: data.description,
+              rooms: data.rooms,
+              bookPeriodStart: data.bookPeriodStart,
+              bookPeriodEnd: data.bookPeriodEnd,
+              allowSplitting: data.allowSplitting,
+              remainingRooms: data.allowSplitting
+                ? data.rooms.length
+                : undefined,
+              contractFile: data.contractFile,
+              contractFileName: data.contractFileName,
+              invoiceFile: data.invoiceFile,
+              invoiceFileName: data.invoiceFileName,
+              bookType: data.bookType,
             }
           : offer
       )
@@ -153,6 +240,39 @@ export const HotelOffersTable = () => {
   const handleDeleteOffer = async (offerId: string) => {
     // TODO: Replace with actual API call
     setOffers(offers.filter((offer) => offer.id !== offerId));
+  };
+
+  const handleStatusChange = async (
+    offerId: string,
+    newStatus: OfferStatus
+  ) => {
+    // TODO: Replace with actual API call
+    setOffers(
+      offers.map((offer) =>
+        offer.id === offerId ? { ...offer, status: newStatus } : offer
+      )
+    );
+    // Update selected offer if it's the one being changed
+    if (selectedOffer?.id === offerId) {
+      setSelectedOffer({ ...selectedOffer, status: newStatus });
+    }
+  };
+
+  const handleRowClick = (offer: Offer) => {
+    setSelectedOffer(offer);
+    setIsDetailsDialogOpen(true);
+  };
+
+  const getTotalRooms = (offer: Offer): number => {
+    return offer.rooms.length;
+  };
+
+  const getRoomsDisplay = (offer: Offer): string => {
+    const total = getTotalRooms(offer);
+    if (offer.allowSplitting && offer.remainingRooms !== undefined) {
+      return `${total}/${offer.remainingRooms}`;
+    }
+    return total.toString();
   };
 
   return (
@@ -173,10 +293,7 @@ export const HotelOffersTable = () => {
               <SelectItem value="completed">Completed</SelectItem>
             </SelectContent>
           </Select>
-          <CreateOfferDialog
-            onSubmit={handleCreateOffer}
-            organizationType="hotel"
-          >
+          <CreateHotelOfferDialog onSubmit={handleCreateOffer}>
             <Button>
               <HugeiconsIcon
                 icon={PlusSignIcon}
@@ -185,7 +302,7 @@ export const HotelOffersTable = () => {
               />
               Create Offer
             </Button>
-          </CreateOfferDialog>
+          </CreateHotelOfferDialog>
         </div>
       </div>
 
@@ -205,7 +322,13 @@ export const HotelOffersTable = () => {
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-foreground">
-                  Created Date
+                  Book Period
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-medium text-foreground">
+                  Allow Splitting
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-medium text-foreground">
+                  Total Rooms
                 </th>
                 <th className="px-6 py-3 text-right text-sm font-medium text-foreground">
                   Actions
@@ -216,7 +339,7 @@ export const HotelOffersTable = () => {
               {filteredOffers.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={7}
                     className="px-6 py-8 text-center text-sm text-muted-foreground"
                   >
                     No offers found
@@ -226,7 +349,8 @@ export const HotelOffersTable = () => {
                 filteredOffers.map((offer) => (
                   <tr
                     key={offer.id}
-                    className="border-b border-border transition-colors hover:bg-muted/50"
+                    className="border-b border-border transition-colors hover:bg-muted/50 cursor-pointer"
+                    onClick={() => handleRowClick(offer)}
                   >
                     <td className="px-6 py-4 text-sm font-mono text-foreground">
                       {offer.id}
@@ -238,14 +362,25 @@ export const HotelOffersTable = () => {
                       <StatusBadge status={offer.status} />
                     </td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">
-                      {formatDate(offer.createdDate)}
+                      {formatDateRange(
+                        offer.bookPeriodStart,
+                        offer.bookPeriodEnd
+                      )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {offer.allowSplitting ? "Yes" : "No"}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {getRoomsDisplay(offer)}
+                    </td>
+                    <td
+                      className="px-6 py-4"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div className="flex items-center justify-end gap-2">
-                        <EditOfferDialog
+                        <EditHotelOfferDialog
                           offer={offer}
                           onSubmit={(data) => handleUpdateOffer(offer.id, data)}
-                          organizationType="hotel"
                         >
                           <Button variant="ghost" size="icon-sm">
                             <HugeiconsIcon
@@ -255,7 +390,7 @@ export const HotelOffersTable = () => {
                             />
                             <span className="sr-only">Edit offer</span>
                           </Button>
-                        </EditOfferDialog>
+                        </EditHotelOfferDialog>
                         <DeleteOfferDialog
                           offerName={offer.name}
                           onConfirm={() => handleDeleteOffer(offer.id)}
@@ -278,6 +413,14 @@ export const HotelOffersTable = () => {
           </table>
         </div>
       </div>
+
+      {/* Offer Details Dialog */}
+      <HotelOfferDetailsDialog
+        offer={selectedOffer}
+        open={isDetailsDialogOpen}
+        onOpenChange={setIsDetailsDialogOpen}
+        onStatusChange={handleStatusChange}
+      />
     </div>
   );
 };

@@ -35,9 +35,12 @@ interface Offer {
   createdDate: Date;
   description?: string;
   requiredRooms?: number;
-  roomTypes?: string[];
+  roomTypes?: Array<{ type: string; quantity: number }>;
   bookPeriodStart?: Date;
   bookPeriodEnd?: Date;
+  contractFile?: File | string; // File object or URL/base64 string
+  contractFileName?: string;
+  bookType: "hard" | "soft";
 }
 
 // Mock data - replace with actual data fetching
@@ -50,9 +53,14 @@ const mockOffers: Offer[] = [
     description:
       "Enjoy a luxurious summer getaway with our all-inclusive vacation package.",
     requiredRooms: 5,
-    roomTypes: ["Standard", "Deluxe", "Suite"],
+    roomTypes: [
+      { type: "Standard", quantity: 2 },
+      { type: "Deluxe", quantity: 2 },
+      { type: "Suite", quantity: 1 },
+    ],
     bookPeriodStart: new Date("2024-06-01"),
     bookPeriodEnd: new Date("2024-08-31"),
+    bookType: "soft",
   },
   {
     id: "OFF-002",
@@ -62,9 +70,13 @@ const mockOffers: Offer[] = [
     description:
       "Perfect for corporate travelers. Special rates on premium hotel rooms.",
     requiredRooms: 10,
-    roomTypes: ["Business", "Executive"],
+    roomTypes: [
+      { type: "Business", quantity: 6 },
+      { type: "Executive", quantity: 4 },
+    ],
     bookPeriodStart: new Date("2024-07-01"),
     bookPeriodEnd: new Date("2024-07-31"),
+    bookType: "hard",
   },
   {
     id: "OFF-003",
@@ -73,9 +85,13 @@ const mockOffers: Offer[] = [
     createdDate: new Date("2024-01-10"),
     description: "Escape the city for a relaxing weekend.",
     requiredRooms: 3,
-    roomTypes: ["Standard", "Deluxe"],
+    roomTypes: [
+      { type: "Standard", quantity: 2 },
+      { type: "Deluxe", quantity: 1 },
+    ],
     bookPeriodStart: new Date("2024-05-01"),
     bookPeriodEnd: new Date("2024-05-31"),
+    bookType: "soft",
   },
   {
     id: "OFF-004",
@@ -84,9 +100,10 @@ const mockOffers: Offer[] = [
     createdDate: new Date("2024-01-18"),
     description: "Thrilling adventure tour including hiking and rafting.",
     requiredRooms: 8,
-    roomTypes: ["Standard"],
+    roomTypes: [{ type: "Standard", quantity: 8 }],
     bookPeriodStart: new Date("2024-09-01"),
     bookPeriodEnd: new Date("2024-09-30"),
+    bookType: "hard",
   },
 ];
 
@@ -160,9 +177,12 @@ export const AgencyOffersTable = () => {
     status: OfferStatus;
     description?: string;
     requiredRooms?: number;
-    roomTypes?: string[];
+    roomTypes?: Array<{ type: string; quantity: number }>;
     bookPeriodStart?: Date;
     bookPeriodEnd?: Date;
+    contractFile?: File | string;
+    contractFileName?: string;
+    bookType: "hard" | "soft";
   }) => {
     // TODO: Replace with actual API call
     const newOffer: Offer = {
@@ -175,6 +195,12 @@ export const AgencyOffersTable = () => {
       roomTypes: data.roomTypes,
       bookPeriodStart: data.bookPeriodStart,
       bookPeriodEnd: data.bookPeriodEnd,
+      contractFile: data.contractFile,
+      contractFileName:
+        data.contractFile instanceof File
+          ? data.contractFile.name
+          : data.contractFileName,
+      bookType: data.bookType,
     };
     setOffers([...offers, newOffer]);
   };
@@ -186,7 +212,7 @@ export const AgencyOffersTable = () => {
       status: OfferStatus;
       description?: string;
       requiredRooms?: number;
-      roomTypes?: string[];
+      roomTypes?: Array<{ type: string; quantity: number }>;
       bookPeriodStart?: Date;
       bookPeriodEnd?: Date;
     }

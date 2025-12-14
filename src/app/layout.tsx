@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Travel Tech",
+  title: "AccessPro",
   description: "Modern travel technology platform",
 };
 

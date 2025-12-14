@@ -30,16 +30,23 @@ interface Offer {
   status: OfferStatus;
   createdDate: Date;
   description?: string;
-  requiredRooms?: number;
-  roomTypes?: Array<{ type: string; quantity: number }>;
+  rooms: Array<{
+    roomId: string;
+    groupPrice: number;
+    individualPrice?: number;
+  }>;
   bookPeriodStart?: Date;
   bookPeriodEnd?: Date;
+  allowSplitting: boolean;
+  remainingRooms?: number;
   contractFile?: File | string;
   contractFileName?: string;
+  invoiceFile?: File | string;
+  invoiceFileName?: string;
   bookType: "hard" | "soft";
 }
 
-interface OfferDetailsDialogProps {
+interface HotelOfferDetailsDialogProps {
   offer: Offer | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -103,23 +110,39 @@ function formatDateRange(start?: Date, end?: Date): string {
   return `${formatDate(start)} - ${formatDate(end)}`;
 }
 
-export function OfferDetailsDialog({
+export function HotelOfferDetailsDialog({
   offer,
   open,
   onOpenChange,
   onStatusChange,
-}: OfferDetailsDialogProps) {
+}: HotelOfferDetailsDialogProps) {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<OfferStatus | null>(
     offer?.status || null
   );
+  const [rooms, setRooms] = useState<any[]>([]);
 
   // Update local status when offer changes
   useEffect(() => {
     if (offer) {
       setCurrentStatus(offer.status);
+      // Fetch room details for display
+      fetchRoomDetails();
     }
   }, [offer]);
+
+  const fetchRoomDetails = async () => {
+    if (!offer) return;
+    try {
+      const response = await fetch("/api/rooms");
+      if (response.ok) {
+        const data = await response.json();
+        setRooms(data.rooms || []);
+      }
+    } catch (error) {
+      console.error("Error fetching room details:", error);
+    }
+  };
 
   if (!offer) return null;
 
@@ -136,6 +159,12 @@ export function OfferDetailsDialog({
       setIsUpdatingStatus(false);
     }
   };
+
+  const getRoomDetails = (roomId: string) => {
+    return rooms.find((r) => r.id === roomId);
+  };
+
+  const totalRooms = offer.rooms.length;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -191,42 +220,53 @@ export function OfferDetailsDialog({
             </>
           )}
 
-          {/* Required Rooms */}
-          {offer.requiredRooms !== undefined && (
-            <>
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">
-                  Required Rooms
-                </h3>
-                <p className="text-sm">{offer.requiredRooms}</p>
-              </div>
-              <Separator />
-            </>
-          )}
-
-          {/* Room Types */}
-          {offer.roomTypes && offer.roomTypes.length > 0 && (
+          {/* Rooms */}
+          {offer.rooms && offer.rooms.length > 0 && (
             <>
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground mb-2">
-                  Room Types & Quantities
+                  Rooms & Pricing
                 </h3>
                 <div className="space-y-2">
-                  {offer.roomTypes.map((rt, index) => {
-                    const type = typeof rt === "string" ? rt : rt.type;
-                    const quantity =
-                      typeof rt === "string" ? undefined : rt.quantity;
+                  {offer.rooms.map((room, index) => {
+                    const roomDetails = getRoomDetails(room.roomId);
                     return (
                       <div
                         key={index}
-                        className="flex items-center justify-between py-1"
+                        className="flex items-center justify-between py-2 px-3 border rounded-lg"
                       >
-                        <span className="text-sm">{type}</span>
-                        <Badge variant="outline">
-                          {quantity !== undefined
-                            ? `${quantity} room${quantity !== 1 ? "s" : ""}`
-                            : "1 room"}
-                        </Badge>
+                        <div>
+                          <span className="text-sm font-medium">
+                            {roomDetails
+                              ? `Room ${roomDetails.roomNumber} - ${roomDetails.roomType}`
+                              : `Room ID: ${room.roomId}`}
+                          </span>
+                          {roomDetails && (
+                            <div className="text-xs text-muted-foreground">
+                              Floor {roomDetails.floor} • Capacity:{" "}
+                              {roomDetails.capacity}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-1 items-end">
+                          <Badge variant="outline" className="ml-2">
+                            Group: $
+                            {typeof room === "object" && "groupPrice" in room
+                              ? room.groupPrice
+                              : typeof room === "object" && "price" in room
+                              ? room.price
+                              : 0}
+                            /night
+                          </Badge>
+                          {offer.allowSplitting &&
+                            typeof room === "object" &&
+                            "individualPrice" in room &&
+                            room.individualPrice && (
+                              <Badge variant="outline" className="ml-2">
+                                Individual: ${room.individualPrice}/night
+                              </Badge>
+                            )}
+                        </div>
                       </div>
                     );
                   })}
@@ -251,6 +291,15 @@ export function OfferDetailsDialog({
             </>
           )}
 
+          {/* Allow Splitting */}
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-1">
+              Allow Splitting
+            </h3>
+            <p className="text-sm">{offer.allowSplitting ? "Yes" : "No"}</p>
+          </div>
+          <Separator />
+
           {/* Book Type */}
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-1">
@@ -260,11 +309,26 @@ export function OfferDetailsDialog({
               {offer.bookType === "hard" ? "Hard Book" : "Soft Book"}
             </Badge>
           </div>
-          <Separator />
+
+          {/* Remaining Rooms (if splitting is allowed) */}
+          {offer.allowSplitting && offer.remainingRooms !== undefined && (
+            <>
+              <Separator />
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground mb-1">
+                  Remaining Rooms
+                </h3>
+                <p className="text-sm font-medium">
+                  {offer.remainingRooms} of {totalRooms} rooms available
+                </p>
+              </div>
+            </>
+          )}
 
           {/* Contract */}
           {offer.contractFile && (
             <>
+              <Separator />
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground mb-2">
                   Contract
@@ -304,7 +368,52 @@ export function OfferDetailsDialog({
                   ) : null}
                 </div>
               </div>
+            </>
+          )}
+
+          {/* Invoice */}
+          {offer.invoiceFile && (
+            <>
               <Separator />
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                  Invoice
+                </h3>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="gap-2">
+                    <HugeiconsIcon
+                      icon={FileIcon}
+                      strokeWidth={2}
+                      className="size-3"
+                    />
+                    {offer.invoiceFileName || "invoice.pdf"}
+                  </Badge>
+                  {offer.invoiceFile instanceof File ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const url = URL.createObjectURL(
+                          offer.invoiceFile as File
+                        );
+                        window.open(url, "_blank");
+                      }}
+                    >
+                      View PDF
+                    </Button>
+                  ) : typeof offer.invoiceFile === "string" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        window.open(offer.invoiceFile as string, "_blank");
+                      }}
+                    >
+                      View PDF
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
             </>
           )}
         </div>

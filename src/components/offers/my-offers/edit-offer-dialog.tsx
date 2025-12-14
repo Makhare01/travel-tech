@@ -35,20 +35,25 @@ const editOfferSchema = z
       required_error: "Status is required",
     }),
     description: z.string().optional(),
-    requiredRooms: z
-      .string()
-      .optional()
-      .refine(
-        (val) => {
-          if (!val) return true; // Optional field
-          const num = Number(val);
-          return !isNaN(num) && Number.isInteger(num) && num >= 1;
-        },
-        { message: "Required rooms must be a positive integer" }
-      ),
-    roomTypes: z.array(z.string()).optional(),
+    roomTypes: z
+      .array(
+        z.object({
+          type: z.string(),
+          quantity: z.string().refine(
+            (val) => {
+              if (!val) return false;
+              const num = Number(val);
+              return !isNaN(num) && Number.isInteger(num) && num >= 1;
+            },
+            { message: "Quantity must be a positive integer" }
+          ),
+        })
+      )
+      .optional(),
     bookPeriodStart: z.string().optional(),
     bookPeriodEnd: z.string().optional(),
+    contractFile: z.instanceof(File).optional(),
+    bookType: z.enum(["hard", "soft"]),
   })
   .refine(
     (data) => {
@@ -79,6 +84,9 @@ interface Offer {
   roomTypes?: string[];
   bookPeriodStart?: Date;
   bookPeriodEnd?: Date;
+  contractFile?: File | string;
+  contractFileName?: string;
+  bookType: "hard" | "soft";
 }
 
 interface EditOfferDialogProps {
@@ -89,9 +97,12 @@ interface EditOfferDialogProps {
     status: "pending" | "active" | "canceled" | "completed";
     description?: string;
     requiredRooms?: number;
-    roomTypes?: string[];
+    roomTypes?: Array<{ type: string; quantity: number }>;
     bookPeriodStart?: Date;
     bookPeriodEnd?: Date;
+    contractFile?: File | string;
+    contractFileName?: string;
+    bookType: "hard" | "soft";
   }) => void | Promise<void>;
   organizationType?: "agency" | "hotel";
 }
@@ -123,6 +134,7 @@ export function EditOfferDialog({
   organizationType = "agency",
 }: EditOfferDialogProps) {
   const [open, setOpen] = useState(false);
+  const [contractFile, setContractFile] = useState<File | null>(null);
   const {
     register,
     handleSubmit,
@@ -136,10 +148,15 @@ export function EditOfferDialog({
       name: offer.name,
       status: offer.status,
       description: offer.description || "",
-      requiredRooms: offer.requiredRooms?.toString() || "",
-      roomTypes: offer.roomTypes || [],
+      roomTypes:
+        offer.roomTypes?.map((rt) => ({
+          type: typeof rt === "string" ? rt : rt.type,
+          quantity: typeof rt === "string" ? "1" : rt.quantity.toString(),
+        })) || [],
       bookPeriodStart: formatDateForInput(offer.bookPeriodStart),
       bookPeriodEnd: formatDateForInput(offer.bookPeriodEnd),
+      contractFile: undefined,
+      bookType: offer.bookType || "soft",
     },
   });
 
@@ -155,38 +172,86 @@ export function EditOfferDialog({
         name: offer.name,
         status: offer.status,
         description: offer.description || "",
-        requiredRooms: offer.requiredRooms?.toString() || "",
-        roomTypes: offer.roomTypes || [],
+        roomTypes:
+          offer.roomTypes?.map((rt) => ({
+            type: typeof rt === "string" ? rt : rt.type,
+            quantity: typeof rt === "string" ? "1" : rt.quantity.toString(),
+          })) || [],
         bookPeriodStart: formatDateForInput(offer.bookPeriodStart),
         bookPeriodEnd: formatDateForInput(offer.bookPeriodEnd),
+        contractFile: undefined,
+        bookType: offer.bookType || "soft",
       });
+      setContractFile(null);
     }
   }, [offer, open, reset]);
 
-  const handleRoomTypeChange = (roomType: string, checked: boolean) => {
-    const currentTypes = selectedRoomTypes;
-    if (checked) {
-      setValue("roomTypes", [...currentTypes, roomType]);
+  const handleRoomTypeQuantityChange = (roomType: string, quantity: string) => {
+    const currentTypes = selectedRoomTypes as Array<{
+      type: string;
+      quantity: string;
+    }>;
+    const quantityNum = quantity ? Number(quantity) : 0;
+
+    if (quantityNum > 0) {
+      // Update or add room type
+      const existingIndex = currentTypes.findIndex(
+        (rt) => rt.type === roomType
+      );
+      if (existingIndex >= 0) {
+        const updated = [...currentTypes];
+        updated[existingIndex] = { type: roomType, quantity };
+        setValue("roomTypes", updated);
+      } else {
+        setValue("roomTypes", [...currentTypes, { type: roomType, quantity }]);
+      }
     } else {
+      // Remove room type if quantity is 0 or empty
       setValue(
         "roomTypes",
-        currentTypes.filter((type) => type !== roomType)
+        currentTypes.filter((rt) => rt.type !== roomType)
       );
     }
   };
 
+  const getRoomTypeQuantity = (roomType: string): string => {
+    const currentTypes = selectedRoomTypes as Array<{
+      type: string;
+      quantity: string;
+    }>;
+    const found = currentTypes.find((rt) => rt.type === roomType);
+    return found?.quantity || "";
+  };
+
+  // Calculate total required rooms from room types
+  const calculatedRequiredRooms = selectedRoomTypes.reduce(
+    (sum, rt) =>
+      sum + (Number((rt as { type: string; quantity: string }).quantity) || 0),
+    0
+  );
+
   const onSubmitForm = async (data: EditOfferFormData) => {
     try {
+      // Calculate required rooms from room types
+      const calculatedRequiredRooms =
+        data.roomTypes && data.roomTypes.length > 0
+          ? data.roomTypes.reduce(
+              (sum, rt) => sum + (Number(rt.quantity) || 0),
+              0
+            )
+          : undefined;
+
       await onSubmit?.({
         name: data.name,
         status: data.status,
         description: data.description,
-        requiredRooms: data.requiredRooms
-          ? Number(data.requiredRooms)
-          : undefined,
+        requiredRooms: calculatedRequiredRooms,
         roomTypes:
           data.roomTypes && data.roomTypes.length > 0
-            ? data.roomTypes
+            ? data.roomTypes.map((rt) => ({
+                type: rt.type,
+                quantity: Number(rt.quantity),
+              }))
             : undefined,
         bookPeriodStart: data.bookPeriodStart
           ? new Date(data.bookPeriodStart)
@@ -194,8 +259,15 @@ export function EditOfferDialog({
         bookPeriodEnd: data.bookPeriodEnd
           ? new Date(data.bookPeriodEnd)
           : undefined,
+        contractFile: contractFile || offer.contractFile,
+        contractFileName:
+          contractFile instanceof File
+            ? contractFile.name
+            : offer.contractFileName,
+        bookType: data.bookType,
       });
       setOpen(false);
+      setContractFile(null);
     } catch (error) {
       console.error("Error updating offer:", error);
     }
@@ -269,43 +341,93 @@ export function EditOfferDialog({
             />
           </div>
 
+          <div className="space-y-2">
+            <Label>
+              Book Type <span className="text-destructive">*</span>
+            </Label>
+            <div className="flex gap-6">
+              <div className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  id="edit-bookType-soft"
+                  value="soft"
+                  {...register("bookType")}
+                  className="size-4 cursor-pointer"
+                />
+                <Label
+                  htmlFor="edit-bookType-soft"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Soft Book
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  id="edit-bookType-hard"
+                  value="hard"
+                  {...register("bookType")}
+                  className="size-4 cursor-pointer"
+                />
+                <Label
+                  htmlFor="edit-bookType-hard"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Hard Book
+                </Label>
+              </div>
+            </div>
+            {errors.bookType && (
+              <p className="text-sm text-destructive">
+                {errors.bookType.message}
+              </p>
+            )}
+          </div>
+
           {isAgency && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="edit-requiredRooms">Required Rooms</Label>
-                <Input
-                  id="edit-requiredRooms"
-                  type="number"
-                  min="1"
-                  placeholder="Enter number of rooms required"
-                  {...register("requiredRooms")}
-                  aria-invalid={errors.requiredRooms ? "true" : "false"}
-                />
-                {errors.requiredRooms && (
-                  <p className="text-sm text-destructive">
-                    {errors.requiredRooms.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Room Types</Label>
-                <div className="grid grid-cols-2 gap-2 p-3 border rounded-lg">
+                <div className="flex items-center justify-between">
+                  <Label>Room Types & Quantities</Label>
+                  {calculatedRequiredRooms > 0 && (
+                    <span className="text-sm text-muted-foreground">
+                      Total:{" "}
+                      <strong className="text-foreground">
+                        {calculatedRequiredRooms}
+                      </strong>{" "}
+                      room{calculatedRequiredRooms !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-3 p-3 border rounded-lg">
                   {ROOM_TYPES.map((type) => (
-                    <label
+                    <div
                       key={type}
-                      className="flex items-center space-x-2 cursor-pointer"
+                      className="flex items-center justify-between gap-4"
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedRoomTypes.includes(type)}
-                        onChange={(e) =>
-                          handleRoomTypeChange(type, e.target.checked)
-                        }
-                        className="rounded border-gray-300"
-                      />
-                      <span className="text-sm">{type}</span>
-                    </label>
+                      <Label
+                        htmlFor={`edit-room-${type}`}
+                        className="text-sm flex-1"
+                      >
+                        {type}
+                      </Label>
+                      <div className="flex items-center gap-2 w-32">
+                        <Input
+                          id={`edit-room-${type}`}
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={getRoomTypeQuantity(type)}
+                          onChange={(e) =>
+                            handleRoomTypeQuantityChange(type, e.target.value)
+                          }
+                          className="w-full"
+                        />
+                        <span className="text-sm text-muted-foreground">
+                          rooms
+                        </span>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -354,6 +476,40 @@ export function EditOfferDialog({
                   </div>
                 </div>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-contractFile">Contract (PDF)</Label>
+                <Input
+                  id="edit-contractFile"
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.type !== "application/pdf") {
+                        alert("Please upload a PDF file");
+                        e.target.value = "";
+                        return;
+                      }
+                      setContractFile(file);
+                      setValue("contractFile", file);
+                    } else {
+                      setContractFile(null);
+                      setValue("contractFile", undefined);
+                    }
+                  }}
+                  className="cursor-pointer"
+                />
+                {(contractFile || offer.contractFileName) && (
+                  <p className="text-sm text-muted-foreground">
+                    {contractFile
+                      ? `Selected: ${contractFile.name} (${(
+                          contractFile.size / 1024
+                        ).toFixed(2)} KB)`
+                      : `Current: ${offer.contractFileName || "contract.pdf"}`}
+                  </p>
+                )}
+              </div>
             </>
           )}
 
@@ -363,6 +519,7 @@ export function EditOfferDialog({
               variant="outline"
               onClick={() => {
                 reset();
+                setContractFile(null);
                 setOpen(false);
               }}
               disabled={isSubmitting}

@@ -32,6 +32,7 @@ interface Offer {
   name: string;
   status: OfferStatus;
   createdDate: Date;
+  bookType: "hard" | "soft";
 }
 
 // Mock data - replace with actual data fetching
@@ -41,24 +42,28 @@ const mockOffers: Offer[] = [
     name: "Summer Vacation Package",
     status: "active",
     createdDate: new Date("2024-01-15"),
+    bookType: "soft",
   },
   {
     id: "OFF-002",
     name: "Business Travel Deal",
     status: "pending",
     createdDate: new Date("2024-01-20"),
+    bookType: "hard",
   },
   {
     id: "OFF-003",
     name: "Weekend Getaway",
     status: "completed",
     createdDate: new Date("2024-01-10"),
+    bookType: "soft",
   },
   {
     id: "OFF-004",
     name: "Adventure Tour",
     status: "canceled",
     createdDate: new Date("2024-01-18"),
+    bookType: "hard",
   },
 ];
 
@@ -124,6 +129,7 @@ export const MyOffers = () => {
     name: string;
     status: OfferStatus;
     description?: string;
+    bookType: "hard" | "soft";
   }) => {
     // TODO: Replace with actual API call
     const newOffer: Offer = {
@@ -131,6 +137,7 @@ export const MyOffers = () => {
       name: data.name,
       status: data.status,
       createdDate: new Date(),
+      bookType: data.bookType,
     };
     setOffers([...offers, newOffer]);
   };
@@ -141,6 +148,7 @@ export const MyOffers = () => {
       name: string;
       status: OfferStatus;
       description?: string;
+      bookType: "hard" | "soft";
     }
   ) => {
     // TODO: Replace with actual API call
@@ -151,6 +159,7 @@ export const MyOffers = () => {
               ...offer,
               name: data.name,
               status: data.status,
+              bookType: data.bookType,
             }
           : offer
       )

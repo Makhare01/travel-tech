@@ -12,13 +12,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
@@ -31,22 +24,26 @@ const createOfferSchema = z
       .string()
       .min(1, "Name is required")
       .min(3, "Name must be at least 3 characters"),
-    status: z.enum(["pending", "active", "canceled", "completed"]),
     description: z.string().optional(),
-    requiredRooms: z
-      .string()
-      .optional()
-      .refine(
-        (val) => {
-          if (!val) return true; // Optional field
-          const num = Number(val);
-          return !isNaN(num) && Number.isInteger(num) && num >= 1;
-        },
-        { message: "Required rooms must be a positive integer" }
-      ),
-    roomTypes: z.array(z.string()).optional(),
+    roomTypes: z
+      .array(
+        z.object({
+          type: z.string(),
+          quantity: z.string().refine(
+            (val) => {
+              if (!val) return false;
+              const num = Number(val);
+              return !isNaN(num) && Number.isInteger(num) && num >= 1;
+            },
+            { message: "Quantity must be a positive integer" }
+          ),
+        })
+      )
+      .optional(),
     bookPeriodStart: z.string().optional(),
     bookPeriodEnd: z.string().optional(),
+    contractFile: z.instanceof(File).optional(),
+    bookType: z.enum(["hard", "soft"]),
   })
   .refine(
     (data) => {
@@ -74,9 +71,11 @@ interface CreateOfferDialogProps {
     status: "pending" | "active" | "canceled" | "completed";
     description?: string;
     requiredRooms?: number;
-    roomTypes?: string[];
+    roomTypes?: Array<{ type: string; quantity: number }>;
     bookPeriodStart?: Date;
     bookPeriodEnd?: Date;
+    contractFile?: File | string; // File object or URL/base64 string
+    bookType: "hard" | "soft";
   }) => void | Promise<void>;
   organizationType?: "agency" | "hotel";
 }
@@ -98,6 +97,7 @@ export function CreateOfferDialog({
   organizationType = "agency",
 }: CreateOfferDialogProps) {
   const [open, setOpen] = useState(false);
+  const [contractFile, setContractFile] = useState<File | null>(null);
   const {
     register,
     handleSubmit,
@@ -109,44 +109,85 @@ export function CreateOfferDialog({
     resolver: zodResolver(createOfferSchema),
     defaultValues: {
       name: "",
-      status: "pending",
       description: "",
-      requiredRooms: "",
       roomTypes: [],
       bookPeriodStart: "",
       bookPeriodEnd: "",
+      contractFile: undefined,
+      bookType: "soft",
     },
   });
 
-  const selectedStatus = watch("status");
   const selectedRoomTypes = watch("roomTypes") || [];
   const bookPeriodStart = watch("bookPeriodStart");
   const bookPeriodEnd = watch("bookPeriodEnd");
 
-  const handleRoomTypeChange = (roomType: string, checked: boolean) => {
-    const currentTypes = selectedRoomTypes;
-    if (checked) {
-      setValue("roomTypes", [...currentTypes, roomType]);
+  const handleRoomTypeQuantityChange = (roomType: string, quantity: string) => {
+    const currentTypes = selectedRoomTypes as Array<{
+      type: string;
+      quantity: string;
+    }>;
+    const quantityNum = quantity ? Number(quantity) : 0;
+
+    if (quantityNum > 0) {
+      // Update or add room type
+      const existingIndex = currentTypes.findIndex(
+        (rt) => rt.type === roomType
+      );
+      if (existingIndex >= 0) {
+        const updated = [...currentTypes];
+        updated[existingIndex] = { type: roomType, quantity };
+        setValue("roomTypes", updated);
+      } else {
+        setValue("roomTypes", [...currentTypes, { type: roomType, quantity }]);
+      }
     } else {
+      // Remove room type if quantity is 0 or empty
       setValue(
         "roomTypes",
-        currentTypes.filter((type) => type !== roomType)
+        currentTypes.filter((rt) => rt.type !== roomType)
       );
     }
   };
 
+  const getRoomTypeQuantity = (roomType: string): string => {
+    const currentTypes = selectedRoomTypes as Array<{
+      type: string;
+      quantity: string;
+    }>;
+    const found = currentTypes.find((rt) => rt.type === roomType);
+    return found?.quantity || "";
+  };
+
+  // Calculate total required rooms from room types
+  const calculatedRequiredRooms = selectedRoomTypes.reduce(
+    (sum, rt) =>
+      sum + (Number((rt as { type: string; quantity: string }).quantity) || 0),
+    0
+  );
+
   const onSubmitForm = async (data: CreateOfferFormData) => {
     try {
+      // Calculate required rooms from room types
+      const calculatedRequiredRooms =
+        data.roomTypes && data.roomTypes.length > 0
+          ? data.roomTypes.reduce(
+              (sum, rt) => sum + (Number(rt.quantity) || 0),
+              0
+            )
+          : undefined;
+
       await onSubmit?.({
         name: data.name,
-        status: data.status,
+        status: "pending", // Always default to pending on creation
         description: data.description,
-        requiredRooms: data.requiredRooms
-          ? Number(data.requiredRooms)
-          : undefined,
+        requiredRooms: calculatedRequiredRooms,
         roomTypes:
           data.roomTypes && data.roomTypes.length > 0
-            ? data.roomTypes
+            ? data.roomTypes.map((rt) => ({
+                type: rt.type,
+                quantity: Number(rt.quantity),
+              }))
             : undefined,
         bookPeriodStart: data.bookPeriodStart
           ? new Date(data.bookPeriodStart)
@@ -154,8 +195,19 @@ export function CreateOfferDialog({
         bookPeriodEnd: data.bookPeriodEnd
           ? new Date(data.bookPeriodEnd)
           : undefined,
+        contractFile: contractFile || undefined,
+        bookType: data.bookType,
       });
-      reset();
+      reset({
+        name: "",
+        description: "",
+        roomTypes: [],
+        bookPeriodStart: "",
+        bookPeriodEnd: "",
+        contractFile: undefined,
+        bookType: "soft",
+      });
+      setContractFile(null);
       setOpen(false);
     } catch (error) {
       console.error("Error creating offer:", error);
@@ -191,36 +243,6 @@ export function CreateOfferDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="status">
-              Status <span className="text-destructive">*</span>
-            </Label>
-            <Select
-              value={selectedStatus}
-              onValueChange={(value) =>
-                setValue("status", value as CreateOfferFormData["status"])
-              }
-            >
-              <SelectTrigger
-                id="status"
-                aria-invalid={errors.status ? "true" : "false"}
-              >
-                <SelectValue placeholder="Select status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="canceled">Canceled</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-              </SelectContent>
-            </Select>
-            {errors.status && (
-              <p className="text-sm text-destructive">
-                {errors.status.message}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
@@ -230,43 +252,93 @@ export function CreateOfferDialog({
             />
           </div>
 
+          <div className="space-y-2">
+            <Label>
+              Book Type <span className="text-destructive">*</span>
+            </Label>
+            <div className="flex gap-6">
+              <div className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  id="bookType-soft"
+                  value="soft"
+                  {...register("bookType")}
+                  className="size-4 cursor-pointer"
+                />
+                <Label
+                  htmlFor="bookType-soft"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Soft Book
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  id="bookType-hard"
+                  value="hard"
+                  {...register("bookType")}
+                  className="size-4 cursor-pointer"
+                />
+                <Label
+                  htmlFor="bookType-hard"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Hard Book
+                </Label>
+              </div>
+            </div>
+            {errors.bookType && (
+              <p className="text-sm text-destructive">
+                {errors.bookType.message}
+              </p>
+            )}
+          </div>
+
           {isAgency && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="requiredRooms">Required Rooms</Label>
-                <Input
-                  id="requiredRooms"
-                  type="number"
-                  min="1"
-                  placeholder="Enter number of rooms required"
-                  {...register("requiredRooms")}
-                  aria-invalid={errors.requiredRooms ? "true" : "false"}
-                />
-                {errors.requiredRooms && (
-                  <p className="text-sm text-destructive">
-                    {errors.requiredRooms.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Room Types</Label>
-                <div className="grid grid-cols-2 gap-2 p-3 border rounded-lg">
+                <div className="flex items-center justify-between">
+                  <Label>Room Types & Quantities</Label>
+                  {calculatedRequiredRooms > 0 && (
+                    <span className="text-sm text-muted-foreground">
+                      Total:{" "}
+                      <strong className="text-foreground">
+                        {calculatedRequiredRooms}
+                      </strong>{" "}
+                      room{calculatedRequiredRooms !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-3 p-3 border rounded-lg">
                   {ROOM_TYPES.map((type) => (
-                    <label
+                    <div
                       key={type}
-                      className="flex items-center space-x-2 cursor-pointer"
+                      className="flex items-center justify-between gap-4"
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedRoomTypes.includes(type)}
-                        onChange={(e) =>
-                          handleRoomTypeChange(type, e.target.checked)
-                        }
-                        className="rounded border-gray-300"
-                      />
-                      <span className="text-sm">{type}</span>
-                    </label>
+                      <Label
+                        htmlFor={`room-${type}`}
+                        className="text-sm flex-1"
+                      >
+                        {type}
+                      </Label>
+                      <div className="flex items-center gap-2 w-32">
+                        <Input
+                          id={`room-${type}`}
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={getRoomTypeQuantity(type)}
+                          onChange={(e) =>
+                            handleRoomTypeQuantityChange(type, e.target.value)
+                          }
+                          className="w-full"
+                        />
+                        <span className="text-sm text-muted-foreground">
+                          rooms
+                        </span>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -314,6 +386,37 @@ export function CreateOfferDialog({
                     )}
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contractFile">Contract (PDF)</Label>
+                <Input
+                  id="contractFile"
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.type !== "application/pdf") {
+                        alert("Please upload a PDF file");
+                        e.target.value = "";
+                        return;
+                      }
+                      setContractFile(file);
+                      setValue("contractFile", file);
+                    } else {
+                      setContractFile(null);
+                      setValue("contractFile", undefined);
+                    }
+                  }}
+                  className="cursor-pointer"
+                />
+                {contractFile && (
+                  <p className="text-sm text-muted-foreground">
+                    Selected: {contractFile.name} (
+                    {(contractFile.size / 1024).toFixed(2)} KB)
+                  </p>
+                )}
               </div>
             </>
           )}
