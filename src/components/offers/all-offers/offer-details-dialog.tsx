@@ -103,7 +103,7 @@ export function OfferDetailsDialog({
         <div className="space-y-6 py-4">
           {/* Organization Info */}
           <div className="flex items-start gap-3 pb-4 border-b">
-            <Avatar size="md">
+            <Avatar size="default">
               <AvatarImage
                 src={offer.organization.logo}
                 alt={offer.organization.name}

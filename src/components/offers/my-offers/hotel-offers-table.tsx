@@ -208,6 +208,7 @@ export const HotelOffersTable = () => {
       contractFileName?: string;
       invoiceFile?: File | string;
       invoiceFileName?: string;
+      bookType: "hard" | "soft";
     }
   ) => {
     // TODO: Replace with actual API call

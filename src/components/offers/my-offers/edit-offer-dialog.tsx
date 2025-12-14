@@ -31,9 +31,7 @@ const editOfferSchema = z
       .string()
       .min(1, "Name is required")
       .min(3, "Name must be at least 3 characters"),
-    status: z.enum(["pending", "active", "canceled", "completed"], {
-      required_error: "Status is required",
-    }),
+    status: z.enum(["pending", "active", "canceled", "completed"]),
     description: z.string().optional(),
     roomTypes: z
       .array(
@@ -81,7 +79,7 @@ interface Offer {
   createdDate: Date;
   description?: string;
   requiredRooms?: number;
-  roomTypes?: string[];
+  roomTypes?: Array<{ type: string; quantity: number }>;
   bookPeriodStart?: Date;
   bookPeriodEnd?: Date;
   contractFile?: File | string;

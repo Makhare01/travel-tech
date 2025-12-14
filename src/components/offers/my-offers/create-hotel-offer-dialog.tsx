@@ -25,7 +25,7 @@ const createHotelOfferSchema = z
       .min(1, "Name is required")
       .min(3, "Name must be at least 3 characters"),
     description: z.string().optional(),
-    allowSplitting: z.boolean().default(false),
+    allowSplitting: z.boolean(),
     rooms: z
       .array(
         z.object({
@@ -108,6 +108,11 @@ interface CreateHotelOfferDialogProps {
     bookPeriodStart?: Date;
     bookPeriodEnd?: Date;
     allowSplitting: boolean;
+    contractFile?: File;
+    contractFileName?: string;
+    invoiceFile?: File;
+    invoiceFileName?: string;
+    bookType: "hard" | "soft";
   }) => void | Promise<void>;
 }
 

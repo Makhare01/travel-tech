@@ -31,11 +31,9 @@ const editHotelOfferSchema = z
       .string()
       .min(1, "Name is required")
       .min(3, "Name must be at least 3 characters"),
-    status: z.enum(["pending", "active", "canceled", "completed"], {
-      required_error: "Status is required",
-    }),
+    status: z.enum(["pending", "active", "canceled", "completed"]),
     description: z.string().optional(),
-    allowSplitting: z.boolean().default(false),
+    allowSplitting: z.boolean(),
     rooms: z
       .array(
         z.object({
@@ -187,9 +185,11 @@ export function EditHotelOfferDialog({
       rooms: offer.rooms.map((r) => ({
         roomId: r.roomId,
         groupPrice:
-          typeof r === "object" && "groupPrice" in r
+          typeof r === "object" &&
+          "groupPrice" in r &&
+          r.groupPrice !== undefined
             ? r.groupPrice.toString()
-            : typeof r === "object" && "price" in r
+            : typeof r === "object" && "price" in r && r.price !== undefined
             ? r.price.toString()
             : "0",
         individualPrice:
@@ -223,9 +223,11 @@ export function EditHotelOfferDialog({
         rooms: offer.rooms.map((r) => ({
           roomId: r.roomId,
           groupPrice:
-            typeof r === "object" && "groupPrice" in r
+            typeof r === "object" &&
+            "groupPrice" in r &&
+            r.groupPrice !== undefined
               ? r.groupPrice.toString()
-              : typeof r === "object" && "price" in r
+              : typeof r === "object" && "price" in r && r.price !== undefined
               ? r.price.toString()
               : "0",
           individualPrice:

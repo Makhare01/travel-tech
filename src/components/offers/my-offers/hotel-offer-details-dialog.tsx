@@ -250,13 +250,7 @@ export function HotelOfferDetailsDialog({
                         </div>
                         <div className="flex flex-col gap-1 items-end">
                           <Badge variant="outline" className="ml-2">
-                            Group: $
-                            {typeof room === "object" && "groupPrice" in room
-                              ? room.groupPrice
-                              : typeof room === "object" && "price" in room
-                              ? room.price
-                              : 0}
-                            /night
+                            Group: ${room.groupPrice}/night
                           </Badge>
                           {offer.allowSplitting &&
                             typeof room === "object" &&
